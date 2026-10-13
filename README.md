@@ -8,8 +8,8 @@
 | 文件 | 主要结构 | 作用 |
 |---|---|---|
 | `colorfm_l.py` | DINO 风格 ViT（Patch Embed、位置编码、Transformer Blocks、LayerNorm）；同时定义传统的 `ParamGenerator` 和逐像素 MLP 应用函数。 | 作为仅使用Global的baseline |
-| `colorfm_l_spatial_grid.py` | Global + bilateral Grid 的基础实现。包含 `SpatialAffineGridHead`、`LearnedGuideMap`、三线性 Grid 切片和局部仿射残差应用。基础 Grid Head 可融合多个 ViT 中间层特征。 | 引入 Guide、Grid 切片，局部信息由Encoder的不同层特征融合提供 |
-| `colorfm_l_spatial_grid_shared_vit.py` | 一个 ViT encoder 的最终 patch tokens 分别送入 Global Head 和 Grid Head。 | 统一简化Global和Grid的预测流程 |
+| `colorfm_l_spatial_grid.py` | 轻量化的 Global + bilateral Grid 基础模型。包含 `SpatialAffineGridHead`、`LearnedGuideMap`、三线性 Grid 切片和局部仿射残差应用；基础 Grid Head 可融合多个 ViT 中间层特征。 | 以较轻量的结构引入 Guide、Grid 切片和局部仿射残差 |
+| `colorfm_l_spatial_grid_shared_vit.py` **(当前默认baseline)**| 一个 ViT encoder 的最终 patch tokens 分别送入 Global Head 和 Grid Head。 | 统一简化Global和Grid的预测流程 |
 | `colorfm_l_spatial_grid_shared_vit_recurrent.py` | 在共享 ViT 编码特征上逐帧执行 SimpleGate 递归融合，再由 Global/Grid heads 预测每帧参数。 | 时序版本
 
 
@@ -49,7 +49,7 @@
 - Source/GT 配对视频推理：`infer_sdr_video.py`
 - 数据集和时间划分：`datasets/`
 
-先按 config 配好数据路径，再在项目目录运行：
+先按 config 配好数据路径，再在项目目录运行（训练数据默认为根目录下包含 source/ 和 target/ 目录，每个目录下包含多个视频文件对应。默认采用在线抽帧，对于非递归版本，可能有IO瓶颈）：
 
 ```bash
 python main_train_xxx.py
