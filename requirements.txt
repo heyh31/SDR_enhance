@@ -1,0 +1,10 @@
+torch
+lightning
+omegaconf
+numpy
+opencv-python
+pytorch-msssim
+tensorboard
+
+# Optional attention acceleration. The model runs without xFormers.
+# xformers

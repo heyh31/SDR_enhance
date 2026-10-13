@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.idea/
+.vscode/
+
+# Dataset, generated runs, checkpoints and caches are local artifacts.
+/data/
+/runs/
+/video_inference_outputs/
+*.ckpt
+*.pth
+*.pt
+*.onnx
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.m4v

@@ -1,0 +1,78 @@
+seed: 2025
+exp_name: shared_vit_sdr
+output_dir: ./runs
+
+model:
+  architecture: colorfm_l_spatial_grid_shared_vit
+  pretrained: ""
+  freeze_encoder: false
+  use_cls_token: false
+  embed_dim: 192
+  depth: 6
+  num_heads: 3
+  mlp_ratio: 4.0
+  dropout: 0.05
+  drop_path_rate: 0.1
+  global_hidden_dim: 128
+  grid_hidden_dim: 64
+  spatial_grid_size: [8, 16, 16]
+  spatial_max_affine_coefficient: 0.25
+  guide_curve_bins: 16
+  spatial_max_query_points: 262144
+
+data:
+  root: ./data
+  source_dir: source
+  target_dir: target
+  frame_cache_root: ""
+  train_frame_cache_root: ""
+  split_mode: temporal_tail
+  validation_uses_test_tail: true
+  test_tail_seconds: 300
+  val_tail_seconds: 0
+  split_gap_seconds: 30
+  min_train_seconds: 60
+  sampling_seed: 2025
+  samples_per_video_per_epoch: 20000
+  train_clip_length: 1
+  eval_interval_seconds: 10
+  max_eval_frames_per_video: 180
+  context_size: 256
+  train_spatial_mode: resize
+  train_resize_size: [540, 960]
+  horizontal_flip: true
+  batch_size: 24
+  eval_batch_size: 1
+  num_workers: 4
+  max_open_captures: 4
+  pin_memory: true
+  persistent_workers: true
+
+train:
+  lr: 0.0001
+  betas: [0.9, 0.999]
+  weight_decay: 0.01
+  max_epochs: 50
+  warmup_epochs: 2
+  eta_min: 0.000001
+  gradient_clip_val: 1.0
+
+solver:
+  global_l1_weight: 1.0
+  grid_residual_l1_weight: 0.01
+  grid_tv_weight: 0.0001
+  check_val_every_n_epoch: 1
+  best_checkpoint_metric: val_psnr
+  best_checkpoint_mode: max
+  save_top_k: 1
+  early_stopping_patience: 0
+  early_stopping_min_delta: 0.0001
+
+trainer:
+  accelerator: auto
+  devices: 1
+  precision: 32-true
+  matmul_precision: high
+  accumulate_grad_batches: 1
+  num_sanity_val_steps: 0
+  log_every_n_steps: 20

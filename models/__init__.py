@@ -1,0 +1,2 @@
+"""ColorFM model definitions."""
+
