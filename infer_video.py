@@ -210,7 +210,11 @@ def main(argv=None):
 
     device = torch.device("cuda:0" if args.device == "auto" and torch.cuda.is_available() else "cpu" if args.device == "auto" else args.device)
     architecture, model = build_model(cfg)
-    if architecture not in {"colorfm_l_spatial_grid_shared_vit", "colorfm_l_spatial_grid_shared_vit_recurrent"}:
+    if architecture not in {
+        "colorfm_l_spatial_grid_shared_vit",
+        "colorfm_l_spatial_grid_shared_vit_recurrent",
+        "colorfm_l_spatial_grid_shared_vit_input_recurrent",
+    }:
         capture.release()
         raise ValueError(f"This CLI supports shared-ViT architectures, got {architecture!r}.")
     checkpoint_meta = load_checkpoint(model, checkpoint)
@@ -233,7 +237,13 @@ def main(argv=None):
         print(f"Checkpoint: {checkpoint} | epoch={checkpoint_meta['epoch']} step={checkpoint_meta['global_step']}")
         print(f"Input: {source}")
         print(f"Interval: [{first / float(fps):.3f}s, {stop / float(fps):.3f}s) | frames={stop-first} | fps={float(fps):.6f}")
-        print(f"Temporal mode: {'recurrent feature state across selected frames' if recurrent else 'independent frame inference; no kernel averaging'}")
+        if architecture == "colorfm_l_spatial_grid_shared_vit_input_recurrent":
+            temporal_mode = "previous enhanced RGB input; state carried across selected frames"
+        elif recurrent:
+            temporal_mode = "recurrent feature state across selected frames"
+        else:
+            temporal_mode = "independent frame inference; no kernel averaging"
+        print(f"Temporal mode: {temporal_mode}")
         print(f"Output: {output}", flush=True)
         for processed, index in enumerate(range(first, stop), start=1):
             ok, bgr = capture.read()

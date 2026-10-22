@@ -1,6 +1,6 @@
 # SDR_enhance
 
-当前目录包含两个可选架构：逐帧的共享 ViT Global/Grid 模型，以及在共享 ViT 特征上加入时序递归融合的 Recurrent 版本。
+当前目录包含逐帧共享 ViT、feature-recurrent、input-recurrent 三种 Global/Grid 架构。`configs/input_recurrent.yaml` 是 previous-enhanced-input 递归训练配置；该 YAML 已由用户加深 ViT 参数，本次集成会保留它不变。
 
 
 ## `models/` 里的模型
@@ -10,7 +10,8 @@
 | `colorfm_l.py` | DINO 风格 ViT（Patch Embed、位置编码、Transformer Blocks、LayerNorm）；同时定义传统的 `ParamGenerator` 和逐像素 MLP 应用函数。 | 作为仅使用Global的baseline |
 | `colorfm_l_spatial_grid.py` | 轻量化的 Global + bilateral Grid 基础模型。包含 `SpatialAffineGridHead`、`LearnedGuideMap`、三线性 Grid 切片和局部仿射残差应用；基础 Grid Head 可融合多个 ViT 中间层特征。 | 以较轻量的结构引入 Guide、Grid 切片和局部仿射残差 |
 | `colorfm_l_spatial_grid_shared_vit.py` **(当前默认baseline)**| 一个 ViT encoder 的最终 patch tokens 分别送入 Global Head 和 Grid Head。 | 统一简化Global和Grid的预测流程 |
-| `colorfm_l_spatial_grid_shared_vit_recurrent.py` | 在共享 ViT 编码特征上逐帧执行 SimpleGate 递归融合，再由 Global/Grid heads 预测每帧参数。 | 时序版本
+| `colorfm_l_spatial_grid_shared_vit_recurrent.py` | 在共享 ViT 编码特征上逐帧执行 SimpleGate 递归融合，再由 Global/Grid heads 预测每帧参数。 | feature-recurrent 版本 |
+| `colorfm_l_spatial_grid_shared_vit_input_recurrent.py` | 当前 SDR 与前一帧增强结果拼为 6 通道后输入同一个 ViT，再预测当前帧 Global/Grid。 | previous-enhanced-input 递归版本 |
 
 
 - colorfm_l_spatial_grid_shared_vit.py 的结构流：
@@ -32,13 +33,17 @@
   `[3,16]、[16,16]、[16,16]、[16,3]` 的四个 kernels。Grid 默认形状为
   `[B,12,8,16,16]`，每个 cell 对应 12 个 affine 系数（3×4），Guide 的深度维用于双线性/三线性切片。
 
--  Recurrent 版本的时序融合
+- Feature-recurrent 版本的时序融合
   Recurrent 模型仍使用同一个 ViT encoder。一个 clip 内的 N 帧先合并为 `B×N` 并行编码，得到每帧特征图；之后按帧顺序递归融合当前特征 `F_t` 和前一融合状态 `H_{t-1}`。SimpleGate 模块将两者拼接，经 1×1 投影和 depthwise 3×3 卷积后拆成两支并逐元素相乘，再投影为更新量：
     ```text
     H_t = F_t + β · ProjectOut(GateA ⊙ GateB)
     ```
     `β` 是零初始化的可学习残差缩放，初始时输出等于当前帧特征；首帧以前一特征等于自身初始化，之后传递融合后的状态。Global Head 和 Grid Head 都读取递归融合后的特征。不同于参数 EMA，这里递归的是 encoder feature，不是 kernels；Grid/Guide 仍按每帧当前输入产生。
     Recurrent 训练数据必须是连续片段，默认 `train_clip_length: 10`。输入形状为 `[B,N,C,H,W]`；默认 `batch_size: 2` 表示每批 2 个 clip，即 20 帧。推理按视频时间顺序处理并延续前序状态，遇到非连续帧会重置；不应打乱帧顺序。
+
+- Previous-enhanced-input 版本与上面的 feature-recurrent 不同：不递归融合 ViT 特征，而是把当前帧 context 与前一帧实际生成的 Global+Local 增强图拼接为 6 通道后送入 ViT。第一帧以自身 context 初始化；在训练 clip 内，前一帧预测结果保留梯度并作为下一帧条件。Global Head 和 Grid Head 都从这份条件化特征预测参数。
+
+  `configs/input_recurrent.yaml` 配置为 `embed_dim=384`、`depth=12`、`num_heads=6`，每个 clip 连续 8 帧、步长 1；`batch_size: 4` 表示 4 个 clip 并行，每个 clip 内仍按时间顺序递归。使用在线视频解码；不要启用稀疏帧缓存，因为它不保证相邻帧连续。该版本的 PatchEmbed 是 6 通道，和原 3 通道 checkpoint 不兼容，需要训练新权重。
 
 ## 训练和推理
 
@@ -57,9 +62,17 @@ python main_train_xxx.py --resume none
 ```
 `--model-only` 检查结构与参数量，`--dry-run` 检查视频配对和时间划分但不训练。默认每个视频使用前段训练，末尾 300 秒作为共用 validation/test，中间留 30 秒间隔；训练按时间桶随机抽取单帧。Source/GT 必须逐帧配对。
 
+Input-recurrent 使用专用入口和你已有的 YAML：
+
+```bash
+python main_train_sdr_shared_vit_input_recurrent.py --model-only
+python main_train_sdr_shared_vit_input_recurrent.py --dry-run
+python main_train_sdr_shared_vit_input_recurrent.py --resume none
+```
+
 ### 单个输入视频：`infer_video.py`
 
-适用于只有待增强 SDR 视频、没有对应调色师 GT 视频的情况。它按时间顺序逐帧推理，默认保存原始片段、Global 输出和 Global+Local 输出。支持本项目的共享 ViT 逐帧模型和 Recurrent 模型，checkpoint 必须与 config 的架构一致。
+适用于只有待增强 SDR 视频、没有对应调色师 GT 视频的情况。它按时间顺序逐帧推理，默认保存原始片段、Global 输出和 Global+Local 输出。支持共享 ViT 逐帧、feature-recurrent 和 input-recurrent 模型，checkpoint 必须与 config 的架构一致。
 
 ```bash
 python infer_video.py \
@@ -84,6 +97,17 @@ python infer_video.py \
 
 逐帧共享 ViT 对每帧独立预测参数，不做 kernel 邻帧平均；Recurrent 架构会按时间顺序延续 encoder 特征状态。后者是模型本身的递归融合，不等同于推理时的 kernel averaging。
 
+Input-recurrent 推理示例（所选区间的第一帧以自身作为初始条件，之后持续把上一帧增强结果传给下一帧）：
+
+```bash
+python infer_video.py \
+  --config configs/input_recurrent.yaml \
+  --checkpoint /data1/hyh/sdr_enhance/colorfm_shared_vit_input_recurrent_clip10_temporal_tail_2/checkpoints/last.ckpt \
+  --input "data/my_video.mp4" \
+  --start 00:00:10 --end 00:00:40 \
+  --output video_inference_outputs/my_video_input_recurrent
+```
+
 ### Source/GT 配对视频：`infer_sdr_video.py`
 
 适用于需要把模型结果和调色师 GT 对齐检查的情况。需要提供配对的 Source 与逐帧对齐 GT 视频（或通过 --video 从 config 的数据目录选择一对），输出原片、GT、Global、Global+Local 四段视频。默认开启 Global kernel 邻帧平均；用 --kernel-average off 关闭。该脚本也不自动计算 PSNR/SSIM，主要用于生成同步对比视频。
@@ -101,6 +125,8 @@ python infer_sdr_video.py \
 ```
 
 `infer_sdr_video.py` 会根据 config 中的 `model.architecture` 选择逐帧或 Recurrent 模型。对 Recurrent 模型，帧按时间顺序递归；若要观察纯递归效果而不叠加推理阶段的 Global kernel 邻帧平均，请加 `--kernel-average off`。Checkpoint 必须与所用架构匹配。
+
+注意：`infer_sdr_video.py` 的配对视频参数窗口推理不适用于 previous-enhanced-input 架构，因为该架构必须逐帧先生成增强结果，再将其传给下一帧。请使用上面的 `infer_video.py`。
 
 Recurrent 推理示例：
 

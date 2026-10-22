@@ -25,6 +25,8 @@ def build_model(cfg):
         from models.colorfm_l_spatial_grid_shared_vit import ColorFM_L
     elif architecture == "colorfm_l_spatial_grid_shared_vit_recurrent":
         from models.colorfm_l_spatial_grid_shared_vit_recurrent import ColorFM_L
+    elif architecture == "colorfm_l_spatial_grid_shared_vit_input_recurrent":
+        from models.colorfm_l_spatial_grid_shared_vit_input_recurrent import ColorFM_L
     else:
         raise ValueError(f"Unsupported architecture: {architecture}")
 

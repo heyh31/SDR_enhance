@@ -22,10 +22,12 @@ from datasets.sdr_pairing import discover_video_pairs, split_video_pairs
 SUPPORTED_ARCHITECTURES = {
     "colorfm_l_spatial_grid_shared_vit",
     "colorfm_l_spatial_grid_shared_vit_recurrent",
+    "colorfm_l_spatial_grid_shared_vit_input_recurrent",
 }
 GRID_ARCHITECTURES = {
     "colorfm_l_spatial_grid_shared_vit",
     "colorfm_l_spatial_grid_shared_vit_recurrent",
+    "colorfm_l_spatial_grid_shared_vit_input_recurrent",
 }
 GRID_AFTER_GLOBAL_ARCHITECTURE = None
 
@@ -224,6 +226,8 @@ def build_model(cfg):
         from models.colorfm_l_spatial_grid_shared_vit import ColorFM_L as ModelClass
     elif architecture == "colorfm_l_spatial_grid_shared_vit_recurrent":
         from models.colorfm_l_spatial_grid_shared_vit_recurrent import ColorFM_L as ModelClass
+    elif architecture == "colorfm_l_spatial_grid_shared_vit_input_recurrent":
+        from models.colorfm_l_spatial_grid_shared_vit_input_recurrent import ColorFM_L as ModelClass
     else:
         raise ValueError(
             f"Unsupported model.architecture={architecture!r}; supported="
@@ -900,6 +904,12 @@ def main():
     )
     device = resolve_device(args.device)
     architecture, model = build_model(cfg)
+    if architecture == "colorfm_l_spatial_grid_shared_vit_input_recurrent":
+        raise ValueError(
+            "The paired-video kernel-window evaluator does not yet support "
+            "autoregressive previous-enhanced conditioning. Use infer_video.py "
+            "for input_recurrent checkpoints."
+        )
     has_grid = architecture in GRID_ARCHITECTURES
     grid_after_global = architecture == GRID_AFTER_GLOBAL_ARCHITECTURE
     checkpoint_path = resolve_checkpoint(cfg, args.checkpoint)
